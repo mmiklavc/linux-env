@@ -57,7 +57,7 @@ set -o vi
 
 ## ENV VARS ##
 
-export PS1="\[\e[1;33\]m[\\u@\\h(192.168.214.132): \\w]\\n\\$\[\e[m\] "
+export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
 
 export OOZIE_URL=http://localhost:11000/oozie
 export FALCON_URL=http://localhost:15000
