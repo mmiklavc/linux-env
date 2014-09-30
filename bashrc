@@ -6,7 +6,7 @@ function mkshellscript() {
     fi
     local fileName=${1}.sh
     touch $fileName
-    chmod +x $fileName
+    chmod ug+x $fileName
     # keep the lack of indentation below to ensure the file
     cat << 'EOF' > $fileName
 #!/bin/bash
