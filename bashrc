@@ -23,7 +23,7 @@ EOF
 
 # Display users
 function dusers() {
-    awk -F":" '{ printf "uname: %-12s uid: %s\n", $1, $3 }' /etc/passwd
+    awk -F":" '{ printf "uname: %-12s uid: %s\n", $1, $3 }' /etc/passwd | sort
 }
 
 function portservice() {
