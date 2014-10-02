@@ -21,6 +21,11 @@ popd > /dev/null
 EOF
 }
 
+# Display users
+function dusers() {
+    awk -F":" '{ printf "uname: %-12s uid: %s\n", $1, $3 }' /etc/passwd
+}
+
 function portservice() {
     local portNum=$1
     if [[ -z $portNum ]]; then
@@ -43,6 +48,10 @@ function serviceport() {
     netstat -npl | grep -i $PID
 }
 
+# change to ancestor directory
+# /hadoop/storm/nimbus/inbox
+# cdp storm
+# /hadoop/storm
 function cdp() {
     match=$1
     newDir=${PWD%${match}*}${match}
