@@ -26,6 +26,11 @@ function dusers() {
     awk -F":" '{ printf "uname: %-12s uid: %s\n", $1, $3 }' /etc/passwd | sort
 }
 
+# Display groups
+function dgroups() {
+    cut -d: -f1 /etc/group | sort
+}
+
 function portservice() {
     local portNum=$1
     if [[ -z $portNum ]]; then
