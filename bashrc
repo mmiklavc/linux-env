@@ -73,5 +73,20 @@ set -o vi
 
 export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
 
+## HADOOP
 export OOZIE_URL=http://localhost:11000/oozie
 export FALCON_URL=http://localhost:15000
+
+# Eternal bash history. - http://stackoverflow.com/a/19533853/3236723
+# ---------------------
+# Undocumented feature which sets the size to "unlimited". (I'm not using unlimited for the file, but setting it high)
+# http://stackoverflow.com/questions/9457233/unlimited-bash-history
+export HISTFILESIZE=100000
+export HISTSIZE=
+export HISTTIMEFORMAT="[%F %T] "
+# Change the file location because certain bash sessions truncate .bash_history file upon close.
+# http://superuser.com/questions/575479/bash-history-truncated-to-500-lines-on-each-login
+export HISTFILE=~/.bash_eternal_history
+# Force prompt to write history after every command.
+# http://superuser.com/questions/20900/bash-history-loss
+PROMPT_COMMAND="history -a; $PROMPT_COMMAND"
