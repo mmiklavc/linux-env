@@ -66,6 +66,7 @@ function cdp() {
 alias ll="ls -l"
 alias l1="ls -1"
 alias la="ls -Al"
+alias grep="grep --color=auto"
 
 set -o vi
 
