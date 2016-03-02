@@ -1,3 +1,38 @@
+function create_project() {
+    mvn archetype:create -DgroupId=$1 -DartifactId=$2 -DarchetypeArtifactId=maven-archetype-quickstart
+}
+
+function create_mvn_archetype() {
+    if [ "$#" -ne "2" ]
+    then
+        echo "Usage: create_hadoop_bootstrap group_id artifact_id"
+        return 1
+    fi
+    mvn archetype:generate \
+        -DgroupId=$1 \
+        -DartifactId=$2 \
+        -DarchetypeArtifactId=maven-archetype-archetype
+}
+
+function create_haddoop_bootstrap() {
+    mvn archetype:generate \
+        -DarchetypeGroupId=com.michaelmiklavcic \
+        -DarchetypeArtifactId=hadoop-bootstrap-archetype \
+        -DarchetypeVersion=1.0-SNAPSHOT
+}
+
+function regen_eclipse() {
+    mvn eclipse:eclipse -DdownloadSources -DdownloadJavadocs
+}
+
+function jpg2pdf() {
+    sips -s format pdf $1 --out $2
+}
+
+function push_to() {
+    mvn package && scp target/*.jar $1
+}
+
 # create an executable shell script
 function mkshellscript() {
     if [[ -z $1 ]]; then
