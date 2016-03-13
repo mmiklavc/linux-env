@@ -5,7 +5,7 @@ function create_project() {
 function create_mvn_archetype() {
     if [ "$#" -ne "2" ]
     then
-        echo "Usage: create_hadoop_bootstrap group_id artifact_id"
+        echo "Usage: $FUNCNAME group_id artifact_id"
         return 1
     fi
     mvn archetype:generate \
@@ -14,7 +14,7 @@ function create_mvn_archetype() {
         -DarchetypeArtifactId=maven-archetype-archetype
 }
 
-function create_haddoop_bootstrap() {
+function create_hadoop_bootstrap() {
     mvn archetype:generate \
         -DarchetypeGroupId=com.michaelmiklavcic \
         -DarchetypeArtifactId=hadoop-bootstrap-archetype \
@@ -26,16 +26,27 @@ function regen_eclipse() {
 }
 
 function jpg2pdf() {
+    if [ "$#" -ne "2" ]
+    then
+        echo "Usage: $FUNCNAME jpeg-image pdf-outfile-name"
+        return 1
+    fi
     sips -s format pdf $1 --out $2
 }
 
 function push_to() {
+    if [ -z "$1" ]
+    then
+        echo "Usage: $FUNCNAME scp_target"
+        return 1
+    fi
     mvn package && scp target/*.jar $1
 }
 
 # create an executable shell script
 function mkshellscript() {
-    if [[ -z $1 ]]; then
+    if [ -z "$1" ]
+    then
         echo "Need more cowbell - script name missing, boss ;-P"
         return 1
     fi
@@ -98,6 +109,8 @@ function cdp() {
     cd $newDir
 }
 
+# Uncomment for color on Mac OSX
+#alias ls="ls -G"
 alias ll="ls -l"
 alias l1="ls -1"
 alias la="ls -Al"
@@ -107,6 +120,8 @@ set -o vi
 
 ## ENV VARS ##
 
+# Uncomment for Mac OSX - hostname does not take --ip-address arg
+#export PS1="\[\e[1;33\]m[\\u: \\w]\\n\\$\[\e[m\] "
 export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
 
 ## HADOOP
