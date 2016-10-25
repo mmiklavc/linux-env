@@ -1,3 +1,8 @@
+# Source global definitions
+if [ -f /etc/bashrc ]; then
+    . /etc/bashrc
+fi
+
 function create_project() {
     mvn archetype:create -DgroupId=$1 -DartifactId=$2 -DarchetypeArtifactId=maven-archetype-quickstart
 }
@@ -125,8 +130,8 @@ set -o vi
 export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
 
 ## HADOOP
-export OOZIE_URL=http://localhost:11000/oozie
-export FALCON_URL=http://localhost:15000
+#export OOZIE_URL=http://localhost:11000/oozie
+#export FALCON_URL=http://localhost:15000
 
 # Eternal bash history. - http://stackoverflow.com/a/19533853/3236723
 # ---------------------
