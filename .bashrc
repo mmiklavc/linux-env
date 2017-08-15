@@ -120,6 +120,9 @@ alias ll="ls -l"
 alias l1="ls -1"
 alias la="ls -Al"
 alias grep="grep --color=auto"
+# display permissions as numeric
+alias cls="ls -l | awk '{k=0;for(i=0;i<=8;i++)k+=((substr(\$1,i+2,1)~/[rwx]/) *2^(8-i));if(k)printf(\"%0o \",k);print}'"
+alias cstat="stat -c '%a %n'"
 
 set -o vi
 
