@@ -42,6 +42,8 @@ au BufRead,BufNewFile *.avdl setlocal filetype=avro-idl
 au BufRead,BufNewFile *.avsc set filetype=json
 
 " JSON
+" https://www.vim.org/scripts/script.php?script_id=1945
+au! BufRead,BufNewFile *.json set filetype=json
 augroup json_autocmd
     autocmd!
     autocmd FileType json set autoindent
@@ -49,10 +51,11 @@ augroup json_autocmd
     autocmd FileType json set textwidth=78 shiftwidth=2
     autocmd FileType json set softtabstop=2 tabstop=8
     autocmd FileType json set expandtab
+    " This will fold lines - only enable if you want this by default
     "    autocmd FileType json set foldmethod=syntax
 augroup END
 
 " Git commit message wordwrap and spellchecking
 autocmd Filetype gitcommit setlocal spell textwidth=72
-# Alternative JSON formatting option. Will use 4 spaces for tab.
+" Alternative JSON formatting option. Will use 4 spaces for tab.
 command JsonFormat %!python -m json.tool
