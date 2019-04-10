@@ -54,3 +54,5 @@ augroup END
 
 " Git commit message wordwrap and spellchecking
 autocmd Filetype gitcommit setlocal spell textwidth=72
+# Alternative JSON formatting option. Will use 4 spaces for tab.
+command JsonFormat %!python -m json.tool
