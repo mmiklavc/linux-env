@@ -1,0 +1,1664 @@
+function setup-mike() {
+    set -o vi
+    alias la="ls -al"
+    alias grep="grep --color=auto"
+    export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
+}
+
+# setup env
+export ZOOKEEPER=amb1.service.consul
+export BROKERLIST=amb4.service.consul
+
+sudo su root && cd ~;
+
+systemctl stop sensor-stubs-bro
+systemctl stop sensor-stubs-snort
+systemctl stop sensor-stubs-yaf
+
+service sensor-stubs stop
+yum -y install redhat-lsb-core wget unzip curl scp mlocate vim screen && \
+#yum -y install redhat-lsb-core wget unzip curl mlocate vim screen && \
+yes | wget https://github.com/mmiklavc/linux-env/archive/master.zip && \
+yes | unzip master.zip && \
+yes | cp /root/linux-env-master/.vimrc /root/ && \
+yes | cp /root/linux-env-master/.bashrc /root/.bashrc && \
+yes | cp /root/linux-env-master/.screenrc /root/.screenrc && \
+echo export METRON_HOST=node1 >> /root/.bashrc && \
+echo export HDP_HOME=/usr/hdp/current >> /root/.bashrc && \
+echo export KAFKA_HOME=/usr/hdp/current/kafka-broker >> /root/.bashrc && \
+export SOLR_VERSION="6.6.2" && \
+echo export SOLR_VERSION="$SOLR_VERSION" >> /root/.bashrc && \
+echo export SOLR_HOME="/var/solr/solr-\${SOLR_VERSION}" >> /root/.bashrc && \
+echo export ELASTIC_HOME="/usr/share/elasticsearch" >> /root/.bashrc && \
+echo export KIBANA_HOME="/usr/share/kibana" >> /root/.bashrc && \
+echo export ZOOKEEPER=\${METRON_HOST}:2181 >> /root/.bashrc && \
+echo export BROKERLIST=\${METRON_HOST}:6667 >> /root/.bashrc && \
+echo export STORM_UI=http://\${METRON_HOST}:8744 >> /root/.bashrc && \
+echo export STORM_LOGS=/var/log/storm/workers-artifacts >> /root/.bashrc && \
+echo export ELASTIC=http://\${METRON_HOST}:9200 >> /root/.bashrc && \
+echo export ES_HOST=http://\${METRON_HOST}:9200 >> /root/.bashrc && \
+echo export KIBANA=http://\${METRON_HOST}:5000 >> /root/.bashrc && \
+export METRON_VERSION="0.7.2" && \
+echo export METRON_VERSION="$METRON_VERSION" >> /root/.bashrc && \
+echo export METRON_HOME="/usr/metron/\${METRON_VERSION}" >> /root/.bashrc && \
+source /root/.bashrc && \
+updatedb
+# kill topologies
+for i in profiler pcap bro__snort__yaf batch_indexing random_access_indexing;
+do
+    storm kill $i;
+done;
+
+# kill topologies
+for i in pcap profiler;
+do
+    storm kill $i;
+done;
+
+# Example deprecation discussion
+https://lists.apache.org/thread.html/6cfc883de28a5cb41f26d0523522d4b93272ac954e5713c80a35675e@%3Cdev.metron.apache.org%3E
+# Example of the process we've used - deprecate in one release, remove in the next.
+https://github.com/apache/metron/blob/master/Upgrading.md#060-to-070
+https://github.com/apache/metron/blob/master/Upgrading.md#071-to-072
+
+# Storm 1.0.1.2.5.3.0-37
+
+export TERM=xterm-256color && set -o vi && alias la="ls -al" && export HDP_HOME=/usr/hdp/current
+# on vagrant quickdev
+export ZOOKEEPER=node1
+export BROKERLIST=node1
+export HDP_HOME="/usr/hdp/current"
+export METRON_VERSION="0.4.3"
+export METRON_HOME="/usr/metron/${METRON_VERSION}"
+
+# reset topics and restart topologies
+# ------
+service sensor-stubs stop; 
+for topology in bro__snort__yaf enrichment profiler batch_indexing random_access_indexing; 
+do 
+    storm kill $topology; 
+done; 
+for topic in bro yaf snort indexing enrichments pcap; 
+do 
+    /usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --delete --topic $topic; 
+done; 
+sleep 20; 
+for topic in bro yaf snort indexing enrichments pcap; 
+do 
+    /usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --create --partitions 1 --replication-factor 1 --topic $topic; 
+done; 
+service sensor-stubs start
+# ------
+
+# publish error data
+while true;
+do 
+    echo "bro-garbage-" $(date "+%s") | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic bro;
+    echo "snort-garbage-" $(date "+%s") | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic snort;
+    sleep 2;
+done;
+# publish error data on a cycle
+cycleval=1; 
+while true; 
+do 
+    if [ $cycleval -ne 0 ]; 
+    then 
+        datestamp=$(date "+%s");
+        cycleval=0;
+    else
+        cycleval=1;
+    fi;
+    echo "bro-garbage-" $datestamp | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic bro;
+    echo "snort-garbage-" $datestamp | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic snort;
+    echo "snort-garbage-" $datestamp | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic yaf;
+    sleep 2;
+done;
+
+====================
+# other metron stuff
+====================
+# centos 7
+systemctl start squid.service
+
+====================
+# elasticsearch
+====================
+# running the service
+service elasticsearch start
+# cluster health
+curl -XGET 'http://node1:9200/_cluster/health?pretty=true'
+# delete indexes
+curl -XDELETE "http://node1:9200/squid*"
+# list all indexes
+curl -XGET "http://node1:9200/_cat/indices?v"
+# check data in indexes
+curl -XGET "http://node1:9200/yaf*/_search"
+curl -XGET "http://ip-10-0-0-25.us-west-1.compute.internal:9200/squid*/_search?pretty=true"
+# count
+curl -XGET "http://node1:9200/bro*/_stats/docs?pretty=true"
+# record stats for an index
+curl -XGET "http://node1:9200/yaf*/_stats?pretty=true"
+# set mappings for an index
+curl -XPUT 'node1:9200/twitter?pretty' -H 'Content-Type: application/json' -d'
+{
+    "settings" : {
+        "index" : {
+            "number_of_shards" : 1,
+            "number_of_replicas" : 1
+        }
+    }
+}
+'
+
+curl -XPUT 'node1:9200/twitter?pretty' -H 'Content-Type: application/json' -d'
+{
+    "settings" : {
+        "index" : {
+            "number_of_shards" : 1,
+            "number_of_replicas" : 1
+        }
+    },
+    "mappings" : {
+        "tweet" : {
+        }
+    }
+}
+'
+
+curl -XPUT 'http://node1:9200/_template/broketemplate_1' -d '
+{
+  "template": "brokeindex_*",
+  "mappings": {
+    "brokeindex_doc": {
+      "dynamic_templates": [
+          {
+            "geo_location_point": {
+              "match": "enrichments:geo:*:location_point",
+              "match_mapping_type": "*",
+              "mapping": {
+                "type": "geo_point"
+              }
+            }
+          }
+      ]
+    }
+  }
+}
+'
+
+# check our busted template
+curl -XGET 'http://node1:9200/_template/broke*?pretty=true
+
+# add data to the busted bugger
+curl -XPUT 'http://node1:9200/brokeindex_1/brokeindex_doc/1' -H 'Content-Type: application/json' -d'
+{
+  "msg": "Broken template 1"
+}
+'
+# get doc by ID
+curl -XGET 'http://node1:9200/brokeindex_1/brokeindex_doc/1'
+
+# xpack security
+curl --user xpack_client_user:changeme <... remaining commands>
+
+=======
+Solr
+=======
+
+# create collection
+cname = metaalert
+su solr -c "${SOLR_HOME}/bin/solr create -c $cname -d ${METRON_HOME}/config/schema/$cname"
+
+# delete collection
+su solr -c "${SOLR_HOME}/bin/solr delete -c $cname"
+
+===========
+KAFKA
+===========
+# list kafka topics
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --list
+# create kafka topics
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --create --partitions 1 --replication-factor 1 --topic $topic
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --create --topic squid --partitions 1 --replication-factor 1
+# delete kafka topic
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --delete --topic yaf
+
+
+# push data to kafka
+cat foo.txt | /usr/hdp/current/kafka-broker/bin/kafka-console-producer.sh --broker-list $BROKERLIST --topic squid
+# read data from kafka
+${HDP_HOME}/kafka-broker/bin/kafka-console-consumer.sh --bootstrap-server $BROKERLIST --topic squid --from-beginning
+# delete hbase data
+echo "truncate 'enrichment'" | hbase shell
+# start topology
+$METRON_HOME/bin/start_parser_topology.sh -z $ZOOKEEPER -s squid
+# w/security
+... --security-protocol PLAINTEXTSASL
+# get offset data about a topic
+/usr/hdp/current/kafka-broker/bin/kafka-run-class.sh kafka.tools.GetOffsetShell --broker-list $BROKERLIST --topic pcap12 --security-protocol PLAINTEXTSASL --time -1 --offsets 1
+# get topic info
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --topic pcap12 --describe
+
+# get broker host info from zookeeper
+echo "get /brokers/ids/1003" | /usr/hdp/current/kafka-broker/bin/zookeeper-shell.sh $ZOOKEEPER
+
+# kafka acl
+/usr/hdp/current/kafka-broker/bin/kafka-acls.sh --authorizer kafka.security.auth.SimpleAclAuthorizer --authorizer-properties zookeeper.connect=node1:2181 --list --topic yaf
+
+# kafka consumer group info
+watch -n 10 -d /usr/hdp/current/kafka-broker/bin/kafka-consumer-groups.sh --command-config=/tmp/consumergroup.config --describe --group bro_24_dryrun_parser --bootstrap-server $BROKERLIST --new-consumer
+
+# note, --new-consumer is no longer needed
+/usr/hdp/current/kafka-broker/bin/kafka-consumer-groups.sh --describe --group unixauthrouting_parser --bootstrap-server $BROKERLIST
+
+# consumer group list
+/usr/hdp/current/kafka-broker/bin/kafka-consumer-groups.sh --bootstrap-server $BROKERLIST --list
+/usr/hdp/current/kafka-broker/bin/kafka-consumer-groups.sh --bootstrap-server $BROKERLIST --group indexing-ra --describe
+# reset consumer group offset
+/usr/hdp/current/kafka-broker/bin/kafka-consumer-groups.sh --bootstrap-server $BROKERLIST --group user_parser --topic user --reset-offsets --to-earliest
+
+# homebrew notes
+brew list installed
+brew list <package> --versions
+
+# pip notes
+pip list
+pip show <package>
+pip install package==version
+
+
+
+# pycapa
+Here are some instructions for getting pycapa setup
+
+Installing pycapa
+====================
+# env vars
+PYCAPA_HOME=/opt/pycapa
+PYTHON27_HOME=/opt/rh/python27/root
+
+# Install these packages via yum (RHEL, CentOS)
+#     epel-release
+#     centos-release-scl
+#     "@Development tools"
+#     python27
+#     python27-scldevel
+#     python27-python-virtualenv
+#     libpcap-devel
+#     libselinux-python
+
+# can run this command to loop
+for item in epel-release centos-release-scl "@Development tools" python27 python27-scldevel python27-python-virtualenv libpcap-devel libselinux-python; do yum install -y $item; done
+
+#Setup directories
+mkdir $PYCAPA_HOME && chmod 755 $PYCAPA_HOME
+
+# Create virtualenv
+export LD_LIBRARY_PATH="/opt/rh/python27/root/usr/lib64"
+cd $PYCAPA_HOME
+${PYTHON27_HOME}/usr/bin/virtualenv pycapa-venv
+
+#Install librdkafka
+export PREFIX=/usr
+wget https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz   -O - | tar -xz
+cd librdkafka-0.11.5/
+./configure --prefix=$PREFIX
+make
+make install
+
+echo "$PREFIX/lib" >> /etc/ld.so.conf.d/pycapa.conf
+ldconfig -v
+
+# Copy pycapa
+# copy incubator-metron/metron-sensors/pycapa from the Metron source tree into $PYCAPA_HOME on the node you would like to install pycapa on.
+
+# Build it
+cd ${PYCAPA_HOME}/pycapa
+# activate the virtualenv
+source ${PYCAPA_HOME}/pycapa-venv/bin/activate
+pip install -r requirements.txt
+python setup.py install
+
+# kill other topologies
+for i in batch_indexing bro enrichment profiler random_access_indexing snort; do storm kill $i; done
+
+# Run it
+cd ${PYCAPA_HOME}/pycapa-venv/bin
+pycapa --producer --kafka-topic pcap --interface eth1 --kafka-broker $BROKERLIST
+
+
+pycapa --consumer \
+   --max-packets 10000 \
+   --kafka-broker somedomain.com:6667 \
+   --kafka-topic pcap12 \
+   --kafka-offset begin \
+   -X security.protocol=SASL_PLAINTEXT \
+   -X sasl.kerberos.keytab=/etc/security/keytabs/metron.headless.keytab \
+   -X sasl.kerberos.principal=metron@EXAMPLE.COM \
+   -X group.id=metron \
+ | tshark -i - -Y malformed
+
+# tshark
+# install
+yum -y install wireshark
+# read from file
+tshark -r pcap-data-201807292315-30b1403b0c944e269bd97fc1ee24055b+0004.pcap
+
+# PCAP
+/usr/metron/0.5.1/bin/pcap_query.sh fixed -df "yyyy-MM-dd-HH-mm" -st 2018-07-25-00-00 -et 2018-07-26-00-00 -rpf 1000 -ft 4
+
+# mpack
+ambari-server install-mpack --mpack= --verbose
+ambari-server uninstall-mpack --mpack-name=metron-ambari.mpack
+
+
+===========
+ZOOKEEPER
+===========
+# push configs
+$METRON_HOME/bin/zk_load_configs.sh -m PUSH -i $METRON_HOME/config/zookeeper/ -z $ZOOKEEPER
+# read configs
+$METRON_HOME/bin/zk_load_configs.sh -m DUMP -z $ZOOKEEPER
+# read config type
+$METRON_HOME/bin/zk_load_configs.sh -m DUMP -z $ZOOKEEPER -c GLOBAL
+# read config type and name
+$METRON_HOME/bin/zk_load_configs.sh -m DUMP -z $ZOOKEEPER -c PARSER -n bro
+# pull configs local
+$METRON_HOME/bin/zk_load_configs.sh -m PULL -o ${METRON_HOME}/config/zookeeper -z $ZOOKEEPER -f
+
+====================
+STORM
+====================
+# REST API
+
+# kerberos
+
+curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/cluster/summary
+
+curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/summary
+
+# get topology id
+topology_name=bro; curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/summary | python -m json.tool | grep encodedId | grep ${topology_name} | awk -F: '{print $2}' | sed 's/ //g' | sed 's/,//g' | sed 's/\"//g'
+
+# get topology info
+topology_name=enrichment; encodedId=$(curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/summary | python -m json.tool | grep encodedId | grep ${topology_name} | awk -F: '{print $2}' | sed 's/ //g' | sed 's/,//g' | sed 's/\"//g') && curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/${encodedId} | python -m json.tool
+
+# get bolt info
+curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/bro-5-1494007692/component/BOLT | python -m json.tool | vim -
+
+# putting them together
+topology_name=bro; encodedId=$(curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/summary | python -m json.tool | grep encodedId | grep ${topology_name} | awk -F: '{print $2}' | sed 's/ //g' | sed 's/,//g' | sed 's/\"//g') && curl --negotiate -u : -b ~/cookiejar.txt -c ~/cookiejar.txt http://hostname:8744/api/v1/topology/${encodedId}/component/spout
+
+# Kerberos Storm via rest
+# requires negotiate as shown below
+>>> import requests
+>>> r = requests.get("http://node1:8744/api/v1/topology/summary")
+>>> r.status_code
+401
+>>> r.headers["www-authenticate"]
+'Negotiate'
+
+
+# silent mode - suppress status
+curl -s
+
+
+scp $(for file in metron-common-${METRON_VERSION}-uber.jar metron-data-management-${METRON_VERSION}-uber.jar metron-elasticsearch-storm-${METRON_VERSION}-uber.jar metron-enrichment-common-${METRON_VERSION}-uber.jar metron-enrichment-storm-${METRON_VERSION}-uber.jar metron-maas-service-${METRON_VERSION}-uber.jar metron-management-${METRON_VERSION}-uber.jar metron-parsers-${METRON_VERSION}-uber.jar metron-parsers-common-${METRON_VERSION}-uber.jar metron-parsing-storm-${METRON_VERSION}-uber.jar metron-pcap-backend-${METRON_VERSION}-uber.jar metron-performance-${METRON_VERSION}-uber.jar metron-profiler-repl-${METRON_VERSION}-uber.jar metron-profiler-spark-${METRON_VERSION}-uber.jar metron-profiler-storm-${METRON_VERSION}-uber.jar metron-rest-${METRON_VERSION}-uber.jar metron-solr-storm-${METRON_VERSION}-uber.jar stellar-common-${METRON_VERSION}-uber.jar; do find . -name $file; done) root@node1:/usr/metron/${METRON_VERSION}/lib
+
+git checkout master
+git pull
+git checkout <fb>
+git pull
+git merge master
+# deal with merge conflicts in a PR form
+git commit --author="mmiklavc <michael.miklavcic@gmail.com>" -a -m "METRON-2239 Metron Automated backup and restore (mmiklavc) closes apache/metron#1546"
+git push origin <fb>
+
+# metron git apache
+git pull
+git pull --squash https://github.com/mmiklavc/metron METRON-478
+git commit --author="mmiklavc <michael.miklavcic@gmail.com>" -a -m "METRON-478: Add Michael Miklavcic, Justin Leet, Nick Allen, and David Lyle to Metron website community page (mmiklavc via mmiklavc) closes apache/metron#287"
+git push origin master
+
+# merge some commits, but not all. Seems to work better than rebase and squash in some instances.
+git reset --soft <commit>
+git commit -m "Squashed commit"
+# merge preferring the remote branch
+git merge -X theirs <branch>
+
+#droplet
+ssh -D 2001 root@clevelandflash
+
+# scp recursive
+scp -r sourcedir desthost:/destdir
+
+# virtual-env
+# deactivate your virtual env
+deactivate
+
+Apache Jira
+-----------
+# REST API
+# Querying for a Jira
+curl -D- -X GET -H "Content-Type: application/json" "https://issues.apache.org/jira/rest/api/2/search?jql=issue=METRON-923" | grep { | python -m json.tool
+
+===============
+LINUX SHELL
+===============
+
+man
+---------------
+# command number in parentheses
+# e.g. GREP(1)
+# (1)     User Commands
+# (2)     System Calls
+# (3)     Library functions
+# (4)     Devices
+# (5)     File formats
+# (6)     Games and Amusements
+# (7)     Conventions and Miscellany
+# (8)     System Administration and Priveledged Commands
+# (L)     Local. Some programs install their man pages into this section instead 
+# (N)     TCL commands
+
+# search for man page entry
+man -k <item to search for>
+
+# look for files with imports not matching
+for file in $(grep -lR --include \*.java "@Stellar" .)
+do 
+    if grep "^import" $file | grep -v " java\| org.apache.metron";
+    then
+        echo "    $file matches"
+        echo "====================="
+    fi
+done > /tmp/matchlist.txt
+
+Shell Command Notes
+-------------
+sed -e 's/$/\r/' inputfile > outputfile                # UNIX to DOS  (adding CRs)
+sed -e 's/\r$//' inputfile > outputfile                # DOS  to UNIX (removing CRs)
+# in-place edit -i will add extension to bak file
+sed -i 'extension' -e 
+# in-place with no backup file
+sed -i 's/SELINUX=\(.*\)/SELINUX=disabled/' /etc/selinux/config
+$(date +"%Y-%m-%d_%H-%M-%S-%N")
+today=$(date +"%Y%m%d")
+date -d @1438888564
+# get date in seconds
+date "+%s"
+
+# diff commands
+# diff from stdin
+diff <(command 1) <(command 2)
+
+# disk i/o io problems and troubleshooting
+https://haydenjames.io/linux-server-performance-disk-io-slowing-application/
+install ATOP - shows disk blocking %
+
+# check disk speed
+
+#To test write speed:
+time dd if=/dev/zero bs=1024k of=tstfile count=1024
+
+# To test read speed:
+time dd if=tstfile bs=1024k of=/dev/null count=1024
+
+# this one does it with purging
+dd if=/dev/zero bs=1024k of=tstfile count=1024 && sudo purge && dd if=tstfile bs=1024k of=/dev/null count=1024 && rm tstfile
+
+# https://haydenjames.io/web-host-doesnt-want-read-benchmark-vps/
+dd if=/dev/zero of=diskbench bs=1M count=1024 conv=fdatasync
+echo 3 | sudo tee /proc/sys/vm/drop_caches
+# we run this next command 2x so first runs without buffer cache, 2nd runs with. 2nd should be much faster
+dd if=diskbench of=/dev/null bs=1M count=1024
+dd if=diskbench of=/dev/null bs=1M count=1024
+rm diskbench
+
+# to do this on Mac, install with Homebrew (brew install coreutils)
+gdd if=/dev/zero of=diskbench bs=1M count=1024x5 conv=fdatasync
+echo 3 | sudo tee /proc/sys/vm/drop_caches
+# we run this next command 2x so first runs without buffer cache, 2nd runs with. 2nd should be much faster
+gdd if=diskbench of=/dev/null bs=1M count=1024
+gdd if=diskbench of=/dev/null bs=1M count=1024
+rm diskbench
+
+# DNS
+dig google.com
+
+# format JSON with Python
+echo '{"foo": "lorem", "bar": "ipsum"}' | python -m json.tool
+
+# Diretory/file stuff - get dir/file part of string
+dirname
+basename
+
+# sync yum repo locally
+# r: repo id
+reposync -r METRON-0.3.1
+
+# search/check installed package
+# "q" stands for "query", "a" stands for "all"
+rpm -q man
+rpm -qa | grep <whatever I care about>
+
+#investigating installed packages
+# like above, this will query all packages and filter by "metron"
+rpm -qa|grep metron
+# you can get info then for the installed packages
+rpm -qi metron-common-0.3.1.1.1.0.0-63.el6.noarch
+# alternatively, get information on which package installed a file on the local FS
+rpm -qif /usr/hcp/current/metron/bin/prune_elasticsearch_indices.sh
+# for not installed packages, you can do this (p=physical package file name)
+rpm -qip foo.rpm
+
+# install rpm
+rpm -ivh <rpmname>
+
+# view rpm contents by package filename
+rpm -qlp <rpmname>
+
+# view rpm contents for installed package
+rpm -ql metron_1_1_0_0_71-config
+
+# show just packages from specific repo
+yum --disablerepo "*" --enablerepo "rpmforge" list available 
+
+Use { and } instead of ( and ) if you do not want Bash to fork a subshell. (is this accurate?)
+
+# redirect all output and background the process
+nohup ./myprocess.sh > logfile.txt 2>&1 &
+
+# running commands in sequence
+------------------------------
+# if a returns zero exit code, then b is executed.
+a && b
+
+# if a returns non-zero exit code, then b is executed.
+a || b
+
+# a is executed and then b is executed.
+a ; b
+
+# nested commands and escaping
+echo -e "select `echo -e \"eat \`echo -e \\"\nat\\"\`\njoes\"` me"
+# result:
+select eat
+at
+joes me
+
+====================
+screen commands
+====================
+http://aperiodic.net/screen/quick_reference
+https://blog.bartbania.com/raspberry_pi/linux-screen/
+# reorder windows
+ctrl-a :number x
+# rename session
+ctrl-a :sessionname newSessionName
+# set width, d=display size, w=window
+ctrl-a :width -w|d 100
+
+
+
+image manipulation
+------------------
+convert +append image1.jpeg image2.jpeg newimage.jpeg
+
+# macports
+sudo port select --list scala
+sudo port select --set scala scala2.11
+
+disk usage and info on partitions and mounts
+----------
+http://www.thegeekstuff.com/2013/01/mount-umount-examples/?utm_source=tuicool
+
+mount
+lsblk
+df -Ta
+# human readable 1024 - information about the partitions and their mount points
+df -h
+# human readable 1000
+df -H
+# list paritition current dir is on
+df -h .
+df -k
+df -aTh
+du -hcs
+
+# list -s=summary only, x=skip diff file sys
+du -hsx * | sort -rh | head -10
+du -h
+
+# list open files
+lsof
+
+# list disks/devices
+fdisk -l
+/dev/sdaN (N is device number)
+
+# read file
+echo $(<myfile.txt)
+myfilevar=`<myfile.txt`
+
+# echo NO newlines
+echo $myvar
+
+# echo WITH newlines preserved
+echo "$myvar"
+
+# loop on array index
+for i in ${!args[@]}; do
+    echo $i
+done
+
+get filename
+stat %n some_file
+
+#append to array
+arr=()
+arr+=('someval')
+arr+=('anotherval')
+
+# check vars when set -u is enabled
+if [[ -n "${1-}" ]]; then
+
+$'command' - you can use ANSI C like strings, e.g. myvar=$'\001'
+vs
+$(command)
+
+# adding numbers
+$(( $a + $b ))
+
+# looping values
+for i in 1 2 3 4 5; do
+    echo $i
+done
+
+#debugging on
+set -x
+
+#debugging off
+set +x
+
+# web commands
+curl -OL http://myurl/myfile.py
+wget -O /outdir/file.txt http://someurl.com
+
+Linux user management, sudo, su
+-------------------
+# enable directory expansion from variable (disabled default bash >= 4.2)
+shopt -s direxpand 
+
+# commands as users
+sudo -su pi /bin/bash
+sudo -u <username> <command>
+sudo -u username2 -H sh -c "cd /home/$USERNAME/$PROJECT; svn update" 
+
+# modify login defaults (e.g. uid_min/max)
+/etc/login.defs
+
+# add user
+useradd <username>
+
+# add group
+usermod -a -G <groupname> <username>
+
+# sudo info
+http://askubuntu.com/questions/376199/sudo-su-vs-sudo-i-vs-sudo-bin-bash-when-does-it-matter-which-is-used
+
+# group info
+getent group <username>
+groups <username>
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Grep tool
+---------------
+# recursive grep
+grep -r "texthere" .
+# grep with filename printed on matches
+grep JAVA $(find <dir> -name *.sh)
+grep -r --include "*.txt" texthere .
+# grep lines before after context (before, after, context=B and A)(-B,-A,-C)
+grep -C 2 foo README.txt
+# add color
+grep --color=auto
+grep --color=auto -C 3 -R -iE "exception" /var/log/storm
+# only match, translate and delete chars, awk on ":" separator, print 2nd item, numeric sort
+grep -o \"rank.* /tmp/ranks.txt | tr -d '"}'|awk -F: '{ print $2 }'|sort -n
+
+# text manipulation
+# merge 2 files in one file side by side (-d is the delimiter)
+paste -d ' ' f1.txt f2.txt
+
+# function stuff
+which [func name]
+type [func|var]
+whereis [file]
+
+# soft link
+ln -s <target> <linkname>
+# view real target
+readlink -f .
+
+# network - check all running ports
+netstat -anp
+netstat -anp|grep 9083
+
+# network - check NIC log messages
+dmesg
+
+# centos 7
+# ifconfig  and netstat are deprecated now - use ip and ss
+# https://tty1.net/blog/2010/ifconfig-ip-comparison_en.html
+ip addr show
+ip link show
+ss -a
+
+
+# check connection to host/port TCP/UDP, etc.
+nc -vz somedomain.com 9083
+
+# display hostname
+hostname
+
+# install
+yum groupinstall base
+
+# list installed
+yum list installed
+
+# search packages
+yum search java | grep 'java-'
+
+#system calls
+strace <command>
+
+kerberos
+--------------------
+# principal makeup
+[n:string](regexp)s/pattern/replacement/g
+primary/instance@REALM
+    $1 - primary - username or host
+    $2 - instance - qualifies primary
+    $0 - realm - kerberos realm
+////////////
+principal  = falcon/someinstance@SOMEREALM.COM
+rule = RULE:[2:$1@$0](falcon@SOMEREALM.COM)s/.*/falcon/
+
+2 components besides realm:
+$1 is the username, “falcon”
+$2 is the host, "someinstance"
+$0 is the realm, “SOMEREALM.COM”
+
+# default principles after db creation
+# kadmin.local -q "listprincs"
+Authenticating as principal root/admin@EXAMPLE.COM with password.
+K/M@EXAMPLE.COM
+kadmin/admin@EXAMPLE.COM
+kadmin/changepw@EXAMPLE.COM
+kadmin/node1@EXAMPLE.COM
+krbtgt/EXAMPLE.COM@EXAMPLE.COM
+
+# Kerberos admin options
+
+# get principal information
+kadmin.local -q "getprinc metron"
+# list all principals
+kadmin.local -q "listprincs"
+# destroy database if having issues with commands
+rm /var/kerberos/krb5kdc/principal*
+
+the regexp turns the principal into “falcon@HWQE.HORTONWORKS.COM”
+the search/replace pattern then turns the entire match into “falcon”
+////////////
+kadmin root/admin@SOMEDOMAIN.com -w "$passwd" -q "$query"
+kinit principal -k -t keytab
+kinit hdfs-primary@SOMEDOMAIN.COM -k -t /etc/security/keytabs/hdfs.headless.keytab
+kinit ambari-qa-primary@SOMEDOMAIN.COM -k -t /etc/security/keytabs/smokeuser.headless.keytab
+klist –k -t /etc/security/nn.service.keytab
+beeline> !connect jdbc:hive2://somehost.com:10000/;principal=hive/somehost.com@SOMEDOMAIN.COM
+# check kerberos rule translation
+hadoop org.apache.hadoop.security.HadoopKerberosName falcon/somehost@SOMEDOMAIN.COM
+echo kinit $(klist -kt /etc/security/keytabs/hdfs.headless.keytab |awk 'END{ print $4 }') -kt /etc/security/keytabs/hdfs.headless.keytab > kt.sh && chmod 755 kt.sh
+# kinit with specified kdc
+kinit --kdc-hostname=ec2-54-200-248-59.us-west-2.compute.amazonaws.com -kt ./metron.headless.keytab metron@EXAMPLE.COM
+
+#encrypt files
+gpg -c <filename>
+> enter pass
+> repeat pass
+
+#decrypt file
+gpg filename
+> enter pass
+
+
+FIND
+--------------------
+find . -not -ipath "*.git*" -not -ipath "*target*"
+find . -name \*.java -o -name \*.xml \! -path \*target\* |xargs grep jobPriority
+# find files modified today
+find <path> -daystart -ctime 0 -print
+# with exec, need space at the end before the "\;"
+find /some/folder -name blah -exec cp {} newlocation/ \;
+# pass multiple matches all at once to the command
+find . -name pom.xml -exec grep maven-shade {} +
+
+
+MacOSX
+--------------------
+Shift-Command-G - Goto folder shortcut
+Alt-Command-u - view source in Chrome
+
+# IntelliJ IDEA 15
+# location for maven archetypes
+~/Library/Caches/IdeaIC15/Maven/Indices/UserArchetypes.xml
+# shortcuts
+# organize imports
+ctrl-alt-o
+# extract method
+command-alt-m
+# show type hierarchy
+ctrl-h
+# show methods popup
+command-F12
+
+vim
+--------------------
+http://vim.wikia.com/wiki/All_the_right_moves
+H   move to top of screen
+M   move to middle of screen
+L   move to bottom of screen
+
+# very magic mode
+:help /\v 
+# operate on ranges of lines by pattern
+34,46g/(/+, /)/ d
+# put multiple values in register
+:g/:/norm f:"Aye
+# list all ex commands
+:help holy-grail
+# global with start/end patterns
+g/<<</+1,/>>>/-1 s/^/##/ 
+# substitute odd lines
+3,32g/^/if line('.')%2| s/^/echo /
+# sort unique
+:sort u
+# sort numeric/number
+:sort -n
+# sort range unique
+:5,34sort u
+# delete line after and including emtpy line
+:g/^$/ .,+1d
+# search and replace example - match things like "hello_this_is_me" and replace as "prefix::hello_this_is_me,"
+:s/\v([_a-z]+),/prefix::\1,/
+# unicode
+CTRL+Vu and then the code-point number as a 4-digit hexadecimal number (pad with zeros if necessary)
+# search inverse/invert and delete
+:g!/pattern/d
+:v/pattern/d
+# show special chars, whitespace
+:set list
+# more whitespace color encoding
+:syntax on
+:set syntax=whitespace
+
+#use yanked text in search/replace (0 represents the default buffer)
+ctrl-r + 0
+# Registers in Vim let you run actions or commands on text stored within them. To access a register, you type "a before a command, where a is the name of a register. If you want to copy the current line into register k, you can type
+"kyy
+# Or you can append to a register by using a capital letter
+"Kyy
+# You can then move through the document and paste it elsewhere using
+"kp
+# To paste from system clipboard on Linux
+"+p
+# To paste from system clipboard on Windows (or from "mouse highlight" clipboard on Linux)
+"*p
+# To access all currently defined registers type
+:reg
+
+#printing line numbers
+:%s/\v(')([^,)])/\="'" . line(".") . submatch(2)/g
+
+#increment line numbers
+:let i=10 | g//let i=i+1 | s/\d/\=i."HELLO"/
+or
+let i=1 | g/.*/s/^/\=i.". "/ | let i=i+1
+
+# add incremented number every third line
+let i=0 | 3,37g/^/if line('.')%3 == 0 | let i=i+1| s/^/\=i.". "/ 
+
+# add count i in new line before each line containing SELECT
+let i=0 | g/SELECT/ | let i=i+1 | s/^/\=i."\r"/ 
+
+#scrolling current line to top/bottom
+zt
+zb
+
+# retabs current file
+:retab
+
+# print matches
+:g/regex/p (this is what 'grep' was named after! :)
+
+# hex editing(first enters hex, 2nd goes back to normal)
+:%!xxd
+:%!xxd -r
+
+# indenting
+# indent lines 4 to 8, inclusive, by one tabstop
+:4,8>   
+
+less
+-----
+# save current less buffer contents to file
+type 's' and then enter the file name and hit enter
+
+
+
+http://www.robmeerman.co.uk/unix/256colours
+export TERM=xterm-256color
+
+java
+--------------------
+Find Java home on mac osx
+/usr/libexec/java_home
+/usr/libexec/java_home -V
+# specific version
+/usr/libexec/java_home -v 1.6
+# set specific java_home
+export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
+# quick-and-dirty log4j setup
+BasicConfigurator.configure();
+BasicConfigurator.configure(new NullAppender());
+Logger.getRootLogger().setLevel(Level.FATAL); //TRACE, DEBUG, INFO, WARN, ERROR and FATAL
+
+maven
+--------------------
+# install
+MAVEN_VERSION=3.6.0
+MAVEN_FILE=http://mirrors.ibiblio.org/apache/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz
+cd /opt && wget $MAVEN_FILE
+
+tar xzf apache-maven-${MAVEN_VERSION}-bin.tar.gz
+ln -s apache-maven-${MAVEN_VERSION} maven
+# cat /etc/profile.d/maven.sh
+export M2_HOME=/opt/maven
+export PATH=${M2_HOME}/bin:${PATH}
+source /etc/profile.d/maven.sh
+
+
+# build specific project list (pl) and also make (am) the dependent projects
+mvn clean install -pl hadoop-mini-clusters-hivemetastore -am -P 2.3.4.0
+
+# Using Apache Maven, dependencies can be globally excluded in your project like so:
+<dependencies>
+  <dependency>
+    <groupId>log4j</groupId>
+    <artifactId>log4j</artifactId>
+    <version>1.2.17</version>
+    <scope>provided</scope>
+  </dependency>
+</dependencies>
+
+# Important use case of dependencyManagement is the control of versions of artifacts used in transitive dependencies.
+
+
+tar
+--------------------
+# create tar
+tar -czvf outfile infiles
+# read tar
+tar -tvf infile
+# extract tar
+tar -xvf infile
+# exclude some files
+tar --exclude='folder/' -czvf my.tar.gz folder/
+# extract to specific directory
+tar zxvf apache-maven-3.2.3-bin.tar.gz -C /usr/local
+# exclude mac hidden files
+COPYFILE_DISABLE=1 tar czvf sometar.tar.gz foldertotar
+
+zip
+--------------------
+zip squash.zip file1 file2 file3
+zip -r squash.zip dir1
+unzip squash.zip
+# pipe zipped contents
+zip -rj - $METRON_HOME/config/schema/bro | curl -X POST --negotiate -u : --header "Content-Type:text/xml" --data-binary @- "http://host"
+
+mysql
+--------------------
+show databases;
+show tables;
+show grants for foouser@sandbox;
+grant all privileges on sqoop_import_test.* to foouser@sandbox;
+select host, user, password from mysql.user;
+mysql -D sqoop_import_test -u foouser --password=hadoop -e "select * from intable;"
+
+hbase
+------
+# https://learnhbase.wordpress.com/2013/03/02/hbase-shell-commands/
+/usr/hdp/current/hbase-client/bin/hbase shell
+> list
+> describe 'tablename'
+> count 'tablename'
+> scan 'tablename'
+
+sqoop
+--------------------
+/usr/lib/sqoop/lib/
+
+hue
+--------------------
+# startup scrip
+/usr/lib/hue/tools/start_scripts/start.sh
+
+as400
+--------------------
+select 'j' as j
+from SYSIBM.SYSDUMMY1
+
+hadoop 1.3
+--------------------
+hadoop dfs -copyFromLocal $1 $2 
+hadoop dfs -rm $1 $2
+Connecting to map-reduce job tracker at: sandbox:50300
+# conf dir
+/etc/hadoop/conf/
+# job logs
+/hadoop/mapred/userlogs/job_201310181246_0018/attempt_201310181246_0018_m_000000_0/
+
+==============================
+HADOOP
+==============================
+
+hadoop 2.x
+--------------------
+# logs
+/var/log/hadoop/hdfs
+
+yarn logs -applicationId application_<ID>
+mapred job -list all
+mapred job -logs <job-id>
+
+# get versions
+hadoop version
+rpm –qa | grep oozie
+rpm –qa | grep falcon
+
+# get directory stats (only goes 1 level deep)
+hdfs dfs -du -h /data/intable1
+# ... summary only
+hdfs dfs -du -s -h /data/intable1
+# namenode switch - doesn't work
+hdfs haadmin -transitionToActive
+# get configuration by key (e.g. core-site)
+hdfs getconf -confKey fs.default.name
+# filesystem check
+hdfs fsck reptest
+# print replication factor
+hdfs dfs -stat %r /path/to/file
+# set replication factor - if dir, sets recursively
+hdfs dfs -setrep -w 3 /path/to/file
+# leave safemode
+hdfs dfsadmin -safemode leave
+
+oozie
+--------------------
+# shared libs
+/usr/lib/oozie/share/lib/
+# dump config info
+oozie admin -configuration
+
+# Falcon processes as workflows and their libpaths
+falcon.libpath=<cluster entity falcon working dir>/lib
+    e.g. -> "/apps/falcon/cluster-backup/working/lib"
+oozie.libpath=<cluster entity falcon staging dir>/falcon/workflows/feed/<feed name>/<some guid + timestamp>/lib
+    e.g. -> "/apps/falcon/cluster-backup/staging/falcon/workflows/feed/feedRaw/4c8d6d865969ea3e84a75958f1b9c720_1456362974702/lib"
+
+oozie-config
+-----------------
+oozie.service.coord.input.check.requeue.interval        60000               Command re-queue interval for coordinator data input check (in millisecond). HDFS
+oozie.service.coord.push.check.requeue.interval         600000              Command re-queue interval for push dependencies (in millisecond). Hive/HCatalog
+
+
+hive
+--------------------
+hive -hiveconf hive.root.logger=DEBUG,console
+su -l hive -c "nohup hive --service metastore > /var/lib/hive/hive.out 2> /var/lib/hive/hive.log   &"
+sudo su hive -c "nohup /usr/lib/hive/bin/hiveserver2 -hiveconf hive.metastore.uris=\" \" > /var/lib/hive/hiveServer2.out 2>/var/lib/hive/hiveServer2.log &"
+# check if running
+netstat -anp|grep 9083
+# default db locations
+hdfs dfs -ls /apps/hive/warehouse/
+# table info
+describe formatted <table name>
+analyze table rawdata partition(proc_date='20141018') compute statistics;
+describe formatted <rawdata> partition (proc_date='20141018');
+# show all variables, etc.
+set -v
+# escaping special reserved keywords
+use backticks - `user` - in the table definition
+hive -e 'select `user` from tweets_json'
+
+
+!connect jdbc:hive2://slave1.clevelandflash.com:10000/mmiklavcic mmiklavcic '' org.apache.hive.jdbc.HiveDriver
+
+# fix fs root
+export HIVE_CONF_DIR=/etc/hive/conf/conf.server
+cd /usr/hdp/2.3.4.0-3485/hive/bin
+./metatool -updateLocation hdfs://backup:8020 hdfs://backup
+
+UPDATE DBS SET DB_LOCATION_URI=REPLACE(DB_LOCATION_URI, 'hdfs://backup:8020:8020', 'hdfs://backup:8020') WHERE DB_LOCATION_URI REGEXP '^hdfs://backup:8020:8020';
+UPDATE SDS SET LOCATION=REPLACE(LOCATION, 'hdfs://backup:8020:8020', 'hdfs://backup:8020') WHERE LOCATION REGEXP '^hdfs://backup:8020:8020';
+
+zookeeper
+--------------------
+# access zookeeper cli
+/usr/hdp/current/zookeeper/bin/zkCli.sh
+
+/usr/hdp/current/hadoop-hdfs-namenode/../hadoop/sbin/hadoop-daemon.sh stop zkfc
+
+# reset active HA NN
+# login to zookeeper, run following commands
+rmr /hadoop-ha
+hdfs zkfc -formatZK
+
+# check namenode status
+curl -sS -L -w '%{http_code}' -X GET --negotiate -u : 'http://<nn-host>:50070/webhdfs/v1/ats/done?op=GETFILESTATUS&user.name=hdfs'
+
+mac osx
+--------------------
+yum install vim-X11 vim-common vim-enhanced vim-minimal
+
+vmware mouse release - ctrl-splat
+
+# How to unfreeze finder or trash
+# Hold down option key, 2-finger click on Finder, select "Relaunch"
+
+# typing special chars
+# alt/opt + [shift for uppercase] + letter 
+
+locate tool
+------------
+sudo /usr/libexec/locate.updatedb
+
+git
+--------------------
+https://help.github.com/articles/changing-author-info/
+git archive -o /tmp/mike.udfs.tar HEAD
+git archive --prefix=dirname/ master | gzip > target/$fileName
+git checkout-index -a -f --prefix=../outputdir/
+# show deletes
+git log --all --diff-filter=D --summary | grep delete
+# show merge history also
+git log -U -m --simplify-merges --merges -- afile.txt
+# merge/rebase 2 commits
+git rebase -i HEAD~2
+# merge/rebase including the root commit
+git rebase -i --root
+# doubly verbose, show all branches
+git branch -vv --all
+# check difference with remote
+git diff master origin/master
+# hard reset to remote master
+git reset --hard origin/master
+# patch from staging changes
+git diff --cached > mypatchname.patch
+# apply patch showing stat info only
+git apply --stat <patchfile>
+# show commits in first branch not contained in the second
+git log branch1 ^branch2 --pretty=online
+# clone remote branch into local branch
+git branch local-branch-name remotename/remote-branch-name
+# follow a file through its changes, including renames
+git log --follow filename
+# better follow command - the '-p' tells it to produce a patch file
+git log -p --follow <file name>
+# show list of files changed between branches or commits
+git diff --name-status 8ba8c5757..HEAD
+git diff --name-only 8ba8c5757..HEAD
+# shows incremental changes per commit
+git show --name-status 8ba8c5757..HEAD
+# checkout remote and its branches without adding the remote first
+git fetch git://host.com/path/to/repo.git remote-branch-name:local-branch-name
+git checkout local-branch-name
+# example PR fetch
+git fetch https://github.com/justinleet/metron METRON-2111:METRON-2111
+# calculate a diff with # line changes
+git diff --stat
+# fix messed up master branch
+git reset origin/master --hard
+# or you can do this
+git checkout -B master origin/master
+
+# tagging
+# pushing remote single tag
+git push origin <tagname>
+# push all tags
+git push --follow-tags
+
+#cherry-pick
+git cherry-pick pcap-job-service-old 738aa1b38^..03dbdd532
+# cherry-pick head commit from 'my-branch'
+git cherry-pick my-branch
+
+# pull request lifecycle
+# syncing up with remote repo
+git remote add upstream <upstream-git-repo-url>
+git remote show upstream
+# list fetch/push url's
+git remote -v
+git checkout -b my-branch-name
+git push origin  my-branch-name
+#... now open your PR
+#... now sync up with upstream
+git checkout master
+git fetch upstream
+git rebase upstream/master
+git push origin master
+
+# fetch and checkout remote branch into local tracking branch
+git fetch <remote> <rbranch>:<lbranch> 
+git checkout <lbranch>
+# or you can do this
+git checkout -b [branch] [remotename]/[branch]
+# fetch a remote repo branch by url and name
+git fetch <url> <remote branch>:<local branch>
+git fetch https://github.com/iraghumitra/incubator-metron/ e2e-using-await:raghu-e2e1
+
+
+
+# reverting rebase - reflog
+# find sha1 of action prior to your change
+git reflog
+git reset --hard <commit_id>
+# show log history from reflog
+git log -g
+# show reflog history formatted nicely oneline
+git log -g --pretty=oneline
+
+# git rebase workflow
+--------
+git checkout 7.x-1.x  # Check out the "public" branch 
+git pull              # Get the latest version from remote
+git checkout -b comment_broken_links_101026  # topical branch
+... # do stuff here.. Make commits.. test...
+git fetch origin      # Update your repository's origin/ branches from remote repo
+git rebase origin/7.x-1.x  # Plop our commits on top of everybody else's
+git checkout 7.x-1.x  # Switch to the local tracking branch
+git pull              # This won't result in a merge commit
+git rebase comment_broken_links_101026  # Pull those commits over to the "public" branch
+git push               # Push the public branch back up, with my stuff on the top
+--------
+
+git apache workflow
+git pull --squash https://github.com/mmiklavc/metron METRON-515
+git commit --author="justinleet <justinjleet@gmail.com>" -a -m "METRON-495: Upgrade Storm to 1.0.x (justinleet via mmiklavc) closes apache/metron#318"
+
+# grab a PR into a local branch
+git fetch github pull/1226/head:SOME-BRANCH
+# using pull into the current branch and specifying the remote repo to use
+git pull https://github.com/repoparent/repo pull/26/head
+
+
+git-svn
+--------------------
+Import git -> svn
+1. cd /path/to/git/localrepo
+2. svn mkdir --parents protocol:///path/to/repo/PROJECT/trunk -m "Importing git repo"
+3. git svn init protocol:///path/to/repo/PROJECT -s
+4. git svn fetch
+5. git rebase trunk (or remotes/git-svn, et. al)
+5.1.  git status
+5.2.  git add (conflicted-files)
+5.3.  git rebase --continue
+5.4.  (repeat 5.1.)
+6. git svn dcommit
+
+Hard and Soft links
+--------------------
+When deleting files, the data part isn't disposed of until all the filename parts have been deleted. There's a count in the inode that indicates how many filenames point to this file, and that count is decremented by 1 each time one of those filenames is deleted. When the count makes it to zero, the inode and its associated data are deleted.
+
+Docker
+--------------------
+# show container mem/cpu usage
+docker stats
+# get docker ip to access external host
+netstat -rn | grep "^0.0.0.0 " | cut -d " " -f1
+
+
+
+Linux info
+--------------------
+cat /etc/*release
+
+# linux version
+[sandbox@sandbox score]$ lsb_release -a
+LSB Version:	:core-4.0-amd64:core-4.0-noarch:graphics-4.0-amd64:graphics-4.0-noarch:printing-4.0-amd64:printing-4.0-noarch
+Distributor ID:	CentOS
+Description:	CentOS release 6.3 (Final)
+Release:	6.3
+Codename:	Final
+
+#memory
+less /proc/meminfo
+free -m
+
+#cpu
+cat /proc/cpuinfo
+
+# cpu's
+sysctl hw.physicalcpu
+sysctl hw.logicalcpu
+sysctl hw
+sysctl hw.ncpu
+
+
+ls file tool
+------------
+# list directories in current dir by modified date
+ls -ldt */
+
+# shutdown system - need 'h' to halt system
+shutdown -h now
+
+# hardware clock sync to system clock
+hwclock -s
+
+Encodings
+--------------------
+iconv
+
+Hex, decimal, binary
+--------------------
+hexdump -C <file>
+# prints one-byte char display, e.g. '\n'
+hexdump -c <file>
+# od -- octal, decimal, hex, ASCII dump
+od -t x1 <file>
+od -x <file>
+# binary dump
+xxd -b <file> 
+# ebcdic
+xxd -E <file>
+# binary from input
+echo -n $'\x0A' | xxd -b
+printf '\x0A' | xxd -b
+# print decimal as hex
+printf "%x\n" 346
+
+Awk awk
+--------------------
+# -v OFS ->set outfile sep to ','
+# -F -> set infile sep to ','
+awk -v OFS="," -F ',' '{ print $4, $2, $3, $5 }'
+# split 1st line of file on commas into newlines and strip quotes
+head -n 1 somefile.txt | sed 's/ , / ,\
+/g' | awk -F: '{ str=$1; gsub(/"/, "", str); print str }'
+# get average line length in a file
+awk 'BEGIN { print "Calculate the average line length of a file"; } { lines++; sum+=length; } END { print "Total lines= " lines; print "Total characters= " sum; print "Average # chars/line= " sum/lines; }' /etc/elasticsearch/elasticsearch.yml
+# remove duplicates in a file without ordering
+awk '!seen[$0]++' file.txt
+
+Maven
+--------------------
+mvn archetype:generate -DarchetypeCatalog=local -DarchetypeGroupId=com.cardinalhealth -DarchetypeArtifactId=hadoop-project-archetype
+mvn -Dit.test=your.TestCase verify (use verify bc otherwise post-integration-test won't run)
+# run specific unit test
+mvn clean test -pl metron-interface/metron-rest -Dtest=HBaseConfigTest
+mvn help:active-profiles
+mvn dependency:tree
+mvn -P activated-profile,-ignored-profile
+mvn dependency:build-classpath
+mvn dependency:copy-dependencies -DoutputDirectory=/tmp/mikeout -DincludeScope=runtime -pl my-project/foo
+# check your deps
+for jar in /tmp/mikeout/*.jar; do echo $jar; jar tvf $jar|grep HBaseConfiguration; done
+# check what's going to happen for the build
+mvn validate
+# see what dependencies are included
+# runtime scope gives runtime and compile dependencies
+mvn dependency:list -DincludeScope=runtime
+# compare releases for dep changes
+mvn dependency:list -DincludeScope=runtime > /tmp/HCP-2.0.0.0.txt
+mvn dependency:list -DincludeScope=runtime > /tmp/HCP-2.0.1.0.txt
+diff /tmp/HCP-2.0.0.0.txt /tmp/HCP-2.0.1.0.txt > /tmp/diff-HCP-2.0.0.0_HCP-2.0.1.0.txt
+
+
+Mac OSX
+--------------------
+Cmd+Opt+Shift+V - paste with destination's formatting
+
+Jenkins
+--------------------
+sudo launchctl load /Library/LaunchDaemons/org.jenkins-ci.plist
+
+ntp date stuff
+---------------
+# check ntp status and if in sync
+ntpstat
+ntpd
+sudo chkconfig ntpd on
+service --status-all | grep ntpd
+service ntpd status
+chkconfig --list
+ntpq -pn
+
+
+#special chars in vim
+http://stackoverflow.com/questions/5702206/find-character-under-cursor-in-vim
+
+# look for dir changes
+watch ls -al
+
+Processes
+---------
+# view process info
+# java process/command name
+ps -C java
+# processes by user (full output)
+ps -fu metron
+
+# output format options
+# Headers may be renamed (ps -o pid,ruser=RealUser -o comm=Command) as desired
+# ps -u metron -o user,pid,ppid,lwp,nlwp,ruser,euser,stime,euid,ruid,time,pcpu,pmem
+USER       PID  PPID   LWP NLWP RUSER    EUSER    STIME  EUID  RUID     TIME %CPU %MEM
+metron   26778 26776 26778   41 metron   metron   Jun21   501   501 00:12:16  0.3  3.6
+metron   32058 32057 32058   10 metron   metron   Jun21   501   501 00:00:17  0.0  0.0
+
+http://web.mit.edu/gnu/doc/html/features_5.html
+Ctrl + \
+Ctrl + c (kill process)
+Ctrl + z (background process, then ps, then kill -9 PID)
+bg (background a process)
+# kill PID of last process running in the background
+kill $!
+
+# In recent Xcode versions you are able to accept it in one step:
+sudo xcodebuild -license accept
+/usr/bin/xcodebuild -version
+
+Ambari ambari
+--------
+# version info
+/var/lib/ambari-server/version
+# get
+/var/lib/ambari-server/resources/scripts/configs.sh -u [] -p [] get [host] [clustername] oozie-site
+# update
+/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin set localhost cl1 hdfs-site hdfs-site.json
+
+# list all cluster service configuration
+curl -u admin:admin -H "X-Requested-By: ambari" -X GET  ${AMBARI_URL}'/api/v1/clusters/metron_cluster/configurations/service_config_versions?is_current=true'
+
+# generate blueprint from cluster
+curl -H "X-Requested-By: ambari" -X GET -u admin:admin http://<host>:8080/api/v1/clusters/mike?format=blueprint
+
+# list blueprints
+curl -H "X-Requested-By: ambari" -X GET -u admin:admin http://<host>:8080/api/v1/blueprints
+# upload blueprint
+curl -H "X-Requested-By: ambari" -X POST -u admin:admin http://<host>:8080/api/v1/blueprints/metron_blueprint -d
+
+# delete service
+curl -u admin:admin -H "X-Requested-By: ambari" -X DELETE  http://amb-server.service.consul:8080/api/v1/clusters/mike/services/PARSERS
+
+curl -u admin:admin -H "X-Requested-By: ambari" -X GET  http://node1:8080/api/v1/clusters/metron_cluster?fields=Clusters/desired_configs
+
+# get namenode service details
+curl -s -u admin:admin -X GET -H "X-Requested-By: ambari" 'http://node1:8080/api/v1/clusters/metron_cluster/services/HDFS/components/NAMENODE'
+
+for config in $(curl -u admin:admin -H "X-Requested-By: ambari" -X GET  http://node1:8080/api/v1/clusters/metron_cluster?fields=Clusters/desired_configs | grep '" : {' | grep -v Clusters | grep -v desired_configs | cut -d'"' -f2 | grep metron); 
+do 
+	echo Saving $config
+	/var/lib/ambari-server/resources/scripts/configs.py -u admin -p admin -a get -l node1 -n metron_cluster -c $config -f /tmp/${config}.json
+done
+
+/var/lib/ambari-server/resources/scripts/configs.py -u admin -p admin -a set -l node1 -n metron_cluster -c $config -f /tmp/${config}.json
+
+Kafka
+-------------
+for topic in bro parser_error parser_invalid snort yaf; do /usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper amb1.service.consul:2181,amb2.service.consul:2181,amb3.service.consul:2181 --delete --topic $topic; done
+
+/usr/hdp/current/kafka-broker/bin/kafka-topics.sh --zookeeper $ZOOKEEPER --delete --topic $topic
+
+Storm
+-------------
+curl -XGET http://amb1.service.consul:8744/api/v1/cluster/configuration
+slots = workers; in yaml this is the # of "ports"
+mem settings - worker.childopts
+The sampling rate of statistics in Storm UI is controlled with the following setting:
+topology.stats.sample.rate (expressed as a percentage of tuples that storm will examine when calculating statistics, default is 5%)
+
+
+HADOOP PORTS
+-------------
+# 2.0
+/etc/hadoop/conf.empty/yarn-site.xml
+    apps - 8088
+    jobhistory - 19888
+
+PostgreSQL
+----------
+\l (acts like SHOW DATABASES)
+\c <dbname> (acts like USE database)
+\dt (acts like SHOW TABLES)
+\d+ <tablename> (acts like DESCRIBE)
+\x on (sets display mode)
+
+Python
+----------------------
+# list modules
+>>> help('modules')
+# mapreduce in python
+>>> reduce(lambda x,y: x+y, map(lambda x:x, [1,2,3,4,5,6,7,8,9,10]))
+55
+
+Java
+----------------------
+http://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/
+http://docs.oracle.com/javase/8/docs/technotes/tools/unix/toc.html
+# list java processes
+jps -mlvV
+# show all options JVM instantiated with
+jps -v
+# show process info
+jinfo <pid>
+jinfo -flags <pid>
+jmap -heap <pid>
+
+# JAVA 8 MEM TOOLS
+# classloader stats
+jmap –clstats <pid>
+# metaspace information - show options with "jstat -options"
+# MC=current metaspace capacity; MU=metaspace utilization (in KB)
+jstat -gc <pid>
+# dump histogram of class metadata - add ‑XX:+UnlockDiagnosticVMOptions on JVM start
+jcmd <pid> GC.class_stats
+
+# unit conversion utility
+# install units (apt-get install units, yum install units, etc)
+
+# TAXII - curl command
+curl --data '<Discovery_Request xmlns="http://taxii.mitre.org/messages/taxii_xml_binding-1.1" message_id="1"/>' -X POST -H "X-TAXII-Accept: urn:taxii.mitre.org:message:xml:1.1" -H "X-TAXII-Content-Type: urn:taxii.mitre.org:message:xml:1.1" -H "Accept: application/xml" -H "Content-Type: application/xml" http://hailataxii.com/taxii-discovery-service |sed 's/</\
+</g'
+
+
+Hadoop, YARN, MapReduce, Tez
+==============================
+http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.3.0/bk_performance_tuning/content/ch_query_optimization_hive.html
+https://www.mapr.com/blog/best-practices-yarn-resource-management#.VhVb5J1Viko
+http://www.cloudera.com/content/cloudera/en/documentation/core/latest/topics/cdh_ig_yarn_tuning.html
+
+Memory and Size Settings
+------------------------------
+General
+    hive.tez.exec.print.summary                 true
+    hive.exec.parallel                          true                Hive stages to run in parallel
+
+Resource Manager
+    yarn.nodemanager.resource.memory-mb         int         8192    The amount of physical memory (in MB) that may be allocated to containers being run by the node manager. Per node.
+
+Application Master
+    yarn.app.mapreduce.am.resource.mb           int                 MapReduce option.
+    yarn.app.mapreduce.am.command-opts          String  -Xmx...
+
+Yarn Container
+    yarn.scheduler.minimum-allocation-mb        int                 The min amount of mem for containers. This is min increment for allocation.
+    yarn.scheduler.maximum-allocation-mb        int                 The max amount of mem for containers.
+
+JVM process
+    mapreduce.map.memory.mb                     int         1024    The amount of memory for map JVM containers.
+    mapreduce.reduce.memory.mb                  int         1024    The amount of memory for reduce JVM containers.
+    mapred.child.java.opts                      String  -Xmx200m    The JVM options used to launch the container process that runs map and reduce tasks. In addition to memory settings, this property can include JVM properties for debugging, for example. Set heap size.
+    mapreduce.map.java.opts                     String  -Xmx200m    The JVM options used for the child process that runs map tasks. Set heap size.
+    mapreduce.reduce.java.opts                  String  -Xmx200m    The JVM options used for the child process that runs reduce tasks. Set heap size.
+
+HIVE optimization
+------------------------------
+Indexing, partitioning, bucketing, skewed/list bucketing
+
+Predicate pushdown
+    hive.optimize.ppd                           String      true    Predicate pushdown enabled
+    hive.optimize.ppd.storage                   String      true
+    hive.ppd.recognizetransivity                String      true
+    hive.smbjoin.cache.rows                     int         10000   
+
+Map-Join Config
+    hive.auto.convert.join
+    hive.auto.convert.join.noconditionaltask
+    hive.auto.convert.join.noconditionaltask.size
+    hive.mapred.local.mem
+    hive.mapjoin.smalltable.filesize
+    hive.mapjoin.localtask.max.memory.usage     decimal     0.9
+    mapreduce.map.output.compress               false                       Set to true
+
+Reducers
+    hive.exec.reducers.bytes.per.reducer        int         256000000       256MB default. How # reducers is calculated from input size. Decrease value to increase # reducers.
+
+Partitions
+    hive.exec.dynamic.partition                 String      true            Set this true to enable dynamic partitioning. Allows you to insert into partitions based on the input data values.
+    hive.optimize.sort.dynamic.partition        String      false           On setting the value of hive.optimize.sort.dynamic.partition=true, the dynamic partitioned columns would be globally sorted which in turn reduces the memory consumption. By default this is value is false.
+    hive.tez.dynamic.partition.pruning          String      true
+    hive.tez.dynamic.partition.pruning.max.event.size
+    hive.tez.dynamic.parition.pruning.max.data.size
+
+Vectorization
+    hive.vectorized.execution.enabled = true;
+    hive.vectorized.execution.reduce.enabled=true;
+
+CBO
+    hive.cbo.enable
+    hive.compute.query.using.stats              String      true
+    hive.stats.fetch.column.stats               String      true
+    hive.stats.fetch.partition.stats            String      true
+
+Job Queue
+    set tez.queue.name=myqueue
+    set mapreduce.job.queuename=myqueue
+
+Classpath
+    mapreduce.job.user.classpath.first                      false           Put user jars on the classpath first
+
