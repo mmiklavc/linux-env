@@ -5,6 +5,8 @@ function setup-mike() {
     export PS1="\[\e[1;33\]m[\\u@\\h($(hostname --ip-address)): \\w]\\n\\$\[\e[m\] "
 }
 
+
+
 # setup env
 export ZOOKEEPER=amb1.service.consul
 export BROKERLIST=amb4.service.consul
@@ -429,6 +431,10 @@ git merge -X theirs <branch>
 #droplet
 ssh -D 2001 root@clevelandflash
 
+# ssh fix on mac
+# ssh: Could not resolve hostname [hostname]: nodename nor servname provided, or not known
+sudo killall -HUP mDNSResponder
+
 # scp recursive
 scp -r sourcedir desthost:/destdir
 
@@ -483,6 +489,8 @@ sed -i 'extension' -e
 # in-place with no backup file
 sed -i 's/SELINUX=\(.*\)/SELINUX=disabled/' /etc/selinux/config
 $(date +"%Y-%m-%d_%H-%M-%S-%N")
+# newline with sed
+sed -e 's/ /\'$'\n/g'
 today=$(date +"%Y%m%d")
 date -d @1438888564
 # get date in seconds
@@ -528,6 +536,19 @@ dig google.com
 
 # format JSON with Python
 echo '{"foo": "lorem", "bar": "ipsum"}' | python -m json.tool
+# format JSON with jq
+echo '{ "hello" : "world", "foo" : [ { "old" : "maid" }, {"some" : "thing" }] }' | jq
+{
+  "hello": "world",
+  "foo": [
+    {
+      "old": "maid"
+    },
+    {
+      "some": "thing"
+    }
+  ]
+}
 
 # Diretory/file stuff - get dir/file part of string
 dirname
@@ -749,6 +770,10 @@ netstat -anp|grep 9083
 # network - check NIC log messages
 dmesg
 
+# dns checking
+# DNS configuration
+scutil --dns
+
 # centos 7
 # ifconfig  and netstat are deprecated now - use ip and ss
 # https://tty1.net/blog/2010/ifconfig-ip-comparison_en.html
@@ -847,6 +872,7 @@ find /some/folder -name blah -exec cp {} newlocation/ \;
 find . -name pom.xml -exec grep maven-shade {} +
 
 
+--------------------
 MacOSX
 --------------------
 Shift-Command-G - Goto folder shortcut
@@ -865,12 +891,22 @@ ctrl-h
 # show methods popup
 command-F12
 
+--------------------
+VSCode
+--------------------
+# glob search
+./src/app/**/*.ts
+
+--------------------
 vim
 --------------------
 http://vim.wikia.com/wiki/All_the_right_moves
 H   move to top of screen
 M   move to middle of screen
 L   move to bottom of screen
+
+# join all lines in file without spaces(exclamation)
+%j!
 
 # very magic mode
 :help /\v 
@@ -1006,6 +1042,29 @@ mvn clean install -pl hadoop-mini-clusters-hivemetastore -am -P 2.3.4.0
 
 # Important use case of dependencyManagement is the control of versions of artifacts used in transitive dependencies.
 
+# export local repository
+mvn deploy -DaltDeploymentRepository=snapshot-repo::default::file:/tmp/mike-repo
+
+GoLang
+golang
+---------------------
+# get go environment details
+go env SOMEVAR
+
+go env GOROOT
+/usr/local/Cellar/go/1.14/libexec
+
+go env GOPATH
+/Users/mmiklavcic/go
+
+# list packages by module
+go list -m k8s.io/api
+# list package deps by package name
+go mod why helm.sh/helm/v3/pkg/cli
+# finds packages and location depending on module
+go mod why -m helm.sh/helm/v3
+# graph deps
+go mod graph
 
 tar
 --------------------
@@ -1173,6 +1232,9 @@ curl -sS -L -w '%{http_code}' -X GET --negotiate -u : 'http://<nn-host>:50070/we
 
 mac osx
 --------------------
+# mac os software version
+sw_vers
+
 yum install vim-X11 vim-common vim-enhanced vim-minimal
 
 vmware mouse release - ctrl-splat
@@ -1229,6 +1291,7 @@ git fetch git://host.com/path/to/repo.git remote-branch-name:local-branch-name
 git checkout local-branch-name
 # example PR fetch
 git fetch https://github.com/justinleet/metron METRON-2111:METRON-2111
+git fetch reponame pull/PR_NUM/head:username-JIRA_123
 # calculate a diff with # line changes
 git diff --stat
 # fix messed up master branch
@@ -1241,6 +1304,10 @@ git checkout -B master origin/master
 git push origin <tagname>
 # push all tags
 git push --follow-tags
+# Add message with tag
+git tag -a mytag-1.0.0 -m "My tag message"
+# view tag message (1 line)
+git tag -n1
 
 #cherry-pick
 git cherry-pick pcap-job-service-old 738aa1b38^..03dbdd532
@@ -1330,6 +1397,12 @@ Docker
 docker stats
 # get docker ip to access external host
 netstat -rn | grep "^0.0.0.0 " | cut -d " " -f1
+# remove tag for image
+docker rmi some-repo:mytag-1.0.0
+# cleanup docker space when you run out
+docker image prune -f
+docker system prune --all --force
+docker system prune --all --force --volumes
 
 
 
@@ -1404,6 +1477,11 @@ head -n 1 somefile.txt | sed 's/ , / ,\
 awk 'BEGIN { print "Calculate the average line length of a file"; } { lines++; sum+=length; } END { print "Total lines= " lines; print "Total characters= " sum; print "Average # chars/line= " sum/lines; }' /etc/elasticsearch/elasticsearch.yml
 # remove duplicates in a file without ordering
 awk '!seen[$0]++' file.txt
+
+tail
+--------------------
+# output starting at line 3
+tail -n +3
 
 Maven
 --------------------
